@@ -1,19 +1,78 @@
-import { useState } from 'react';
-import {db} from './firebaseConnection';
-import {doc, setDoc, collection, addDoc, getDoc, getDocs, updateDoc } from 'firebase/firestore'
+import { useState, useEffect} from 'react';
+import {db, auth } from './firebaseConnection';
+import {
+  doc, 
+  setDoc, 
+  collection, 
+  addDoc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  deleteDoc,
+  onSnapshot
+} from 'firebase/firestore'
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from 'firebase/auth'
+
 import './app.css';
 import { async } from '@firebase/util';
 
+//import { async } from '@firebase/util';
 
 function App() {
-
-  
   const [titulo, setTitulo] = useState('');
   const [autor, setAutor] = useState('');
   const [idPost, setIdPost] = useState('');
+
+  const [email, setEmail] = useState();
+  const [senha, setSenha] = useState();
+  
+  const [user, setUser] = useState(false);
+  const [userDetail, setUserDetail] = useState({})
+
+  
   const [post, setPost] = useState([]); //pegar uma lista de posts
+  
+  
+  useEffect(() => {
+    async function loadPosts(){
+      const unsub = onSnapshot(collection(db, 'post'), (snapshot) => {
+        let listaPost = [];
 
+        snapshot.forEach((doc) => {
+          listaPost.push({
+            id:doc.id,
+            titulo: doc.data().titulo,
+            autor: doc.data().autor,
+          })
+        })
+  
+        setPost(listaPost);
+      })
+    }
 
+    loadPosts();
+
+  }, [])
+
+  useEffect(() => {
+    async function checkLogin(){
+      onAuthStateChanged(auth, (user) => {
+        if(user){
+          console.log(user);  
+        }else{
+          setUser(false)
+          setUserDetail({})
+        }
+      })
+    }
+
+    checkLogin();
+  }, [])
   async function handleAdd(){ 
  //   (adicionando com id 12345 digitado aqui "a mão mesmo")
  //   await setDoc(doc(db,'post', '12345'), {
@@ -91,10 +150,98 @@ function App() {
     .catch(() => {
       console.log('ERRO AO ATUALIZAR')
     })
+
   } 
+
+  async function excluirPost(id){
+    const docRef = doc(db, 'post', id)
+    await deleteDoc(docRef)
+    .then(() =>{
+      alert('POST DELETADO COM SUCESSO!!')
+    })
+  }
+
+  async function novoUsuario(){
+    await createUserWithEmailAndPassword(auth, email, senha)
+    .then(() => {
+      console.log('CADASTRADO COM SUCESSO')
+      setEmail('')
+      setSenha('')
+    })
+    .catch((error) => {
+      if(error.code === 'auth/weak-password'){
+        alert('Senha muito fraca.')
+      }else if(error.code === 'auth/email-already-in-use'){
+        alert('Email já existe!')
+      }
+    })
+  }
+
+  async function logarUsuario(){
+    await signInWithEmailAndPassword(auth, email, senha)
+    .then((value) => {
+      console.log('USER LOGADO COM SUCESSO')
+      console.log(value.user);
+
+      setUserDetail({
+        uid:value.user.uid,
+        email: value.user.email,
+      })
+      setUser(true);
+
+      setEmail('')
+      setSenha('')
+
+    })
+    .catch(()=> {
+      console.log('ERRO AO FAZER LOGIN')
+    })
+  } 
+  
+  async function fazerLogout(){
+    await signOut(auth)
+    setUser(false);
+    setUserDetail({})
+  }
+
+
+
   return (
     <div>
       <h1>ReactJS + Firebase :)</h1>
+
+      { user && (
+        <div>
+          <strong>Seja bem-vindo(a) (Você está logado)</strong> <br/>
+          <span>ID: {userDetail.uid} - Email: {userDetail.email}</span> <br/>
+          <button onClick={fazerLogout}>Sair da conta</button>
+          <br/><br/>
+        </div>  
+      )}
+
+    <div className='container'>
+      <h2>Usuários</h2>
+
+      <label>Email</label>
+      <input 
+        value={email} 
+        onChange={(e)=> setEmail(e.target.value)}
+        placeholder='Digite um email'
+      /> <br/>
+
+      <label>Senha</label>
+      <input 
+        value={senha} 
+        onChange={(e)=> setSenha(e.target.value)}
+        placeholder='Digite sua senha'
+      /> <br/>
+
+      <button onClick={novoUsuario}>Cadastrar</button>
+      <button onClick={logarUsuario}>Fazer login</button>
+    </div>  
+
+    <br/><br/>
+    <hr/>
 
     <div className='container'>
 
@@ -114,7 +261,7 @@ function App() {
         onChange={(e) =>setTitulo(e.target.value)}
       />
 
-      <label>Autor:</label>
+      <label>Autor</label>
       <input
         type='text'
         placeholder='Autor do post'
@@ -131,8 +278,9 @@ function App() {
           return(
             <li key={post.id}>
               <strong>ID: {post.id}</strong><br/>
-              <span>Titulo: {post.titulo}</span><br/>
-              <span>Autor: {post.autor}</span><br/><br/>
+              <span>Titulo: {post.titulo}</span> <br/>
+              <span>Autor: {post.autor}</span> <br/>
+              <button onClick={() => excluirPost(post.id)}>Excluir</button> <br/> <br/>
             </li>
           )
         })}
